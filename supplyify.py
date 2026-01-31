@@ -16,7 +16,7 @@ input { color: black !important; }
 """, unsafe_allow_html=True)
 
 # ---------------- AMAZON CONFIG ----------------
-AFFILIATE_TAG = "michaelcolett-20"   # <-- your Amazon Associate ID
+AFFILIATE_TAG = "michaelcolett-20"  # <-- replace with your tag
 AMAZON_SEARCH_URL = "https://www.amazon.com/s"
 
 # ---------------- SESSION INIT ----------------
@@ -25,12 +25,13 @@ if "logged_in" not in st.session_state:
 if "email" not in st.session_state:
     st.session_state.email = ""
 if "users" not in st.session_state:
-    st.session_state.users = {}  # stores email:password
-if "supply_list" not in st.session_state:
-    st.session_state.supply_list = {}
+    st.session_state.users = {}  # email:password
+if "supply_list" not in st.session_state or not isinstance(st.session_state.supply_list, dict):
+    st.session_state.supply_list = {}  # email: list of products
 
 # ---------------- FUNCTIONS ----------------
 def validate_password(password):
+    """Check password is at least 8 chars and has 1 uppercase letter"""
     return len(password) >= 8 and re.search(r"[A-Z]", password)
 
 # ---------------- LOGIN / CREATE ACCOUNT ----------------
@@ -38,6 +39,7 @@ if not st.session_state.logged_in:
     st.title("🔑 Welcome to Supplyify")
     tab1, tab2 = st.tabs(["Login", "Create Account"])
 
+    # ---------------- LOGIN TAB ----------------
     with tab1:
         st.subheader("Login")
         email = st.text_input("Email", key="login_email")
@@ -49,9 +51,11 @@ if not st.session_state.logged_in:
                 st.success(f"Logged in as {email}")
             else:
                 st.error("Invalid email or password")
-
+    
+    # ---------------- CREATE ACCOUNT TAB ----------------
     with tab2:
         st.subheader("Create Account")
+        st.info("Password must be at least 8 characters and include 1 uppercase letter")
         new_email = st.text_input("Email", key="create_email")
         new_password = st.text_input("Password", type="password", key="create_password")
         confirm_password = st.text_input("Confirm Password", type="password", key="create_confirm")
@@ -61,12 +65,13 @@ if not st.session_state.logged_in:
             elif new_password != confirm_password:
                 st.error("Passwords do not match")
             elif not validate_password(new_password):
-                st.error("Password must be at least 8 characters and contain 1 uppercase letter")
+                st.error("Password must be at least 8 characters and include 1 uppercase letter")
             else:
                 st.session_state.users[new_email] = new_password
-                st.session_state.supply_list[new_email] = []
-                st.success("Account created! Please switch to the Login tab to log in.")
-    st.stop()  # stop script until logged in
+                if new_email not in st.session_state.supply_list:
+                    st.session_state.supply_list[new_email] = []
+                st.success("Account created! Switch to Login tab to sign in.")
+    st.stop()  # stop until user logs in
 
 # ---------------- LOGGED-IN APP ----------------
 email = st.session_state.email
@@ -104,7 +109,6 @@ if query:
             })
             st.success(f"Added {query} to your list!")
 
-    # Direct Amazon search
     st.markdown(f"[View on Amazon]({amazon_link}){{:target='_blank'}}", unsafe_allow_html=True)
 
 # ---------------- SUPPLY LIST ----------------
@@ -123,7 +127,7 @@ if user_list:
             )
         with col2:
             item["usage_per_day"] = st.number_input(
-                "Usage per day",
+                "Units used per day",
                 min_value=1,
                 value=item.get("usage_per_day",1),
                 key=f"usage_{idx}"
@@ -133,11 +137,15 @@ if user_list:
                 user_list.pop(idx)
                 st.experimental_rerun()
 
-        # Predict depletion
+        # ---------------- DEPLETION PREDICTION ----------------
         if item["usage_per_day"] > 0:
             days_left = item["amount_left"] / item["usage_per_day"]
             reorder_date = datetime.now() + timedelta(days=days_left)
             st.info(f"Estimated days remaining: {days_left:.1f} days (Reorder by {reorder_date.date()})")
+            # ---------------- NOTIFICATION ----------------
+            if days_left < 3:
+                st.warning(f"⚠️ Low stock alert for {item['name']}! Consider reordering soon.")
+
         st.markdown(f"[Reorder on Amazon]({item['amazon_link']}){{:target='_blank'}}", unsafe_allow_html=True)
 
 # ---------------- FOOTER / DISCLOSURE ----------------
