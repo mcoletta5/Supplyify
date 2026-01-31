@@ -33,9 +33,6 @@ c.execute("""CREATE TABLE IF NOT EXISTS users (
 c.execute("""CREATE TABLE IF NOT EXISTS supplies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT,
-                category TEXT,
-                brand TEXT,
-                type TEXT,
                 name TEXT,
                 amazon_link TEXT,
                 amount_left REAL,
@@ -53,22 +50,6 @@ if "email" not in st.session_state:
 # ---------------- PASSWORD VALIDATION ----------------
 def validate_password(password):
     return len(password) >= 8 and re.search(r"[A-Z]", password)
-
-# ---------------- PREDEFINED CATEGORY / BRAND / TYPE ----------------
-PREDEFINED = {
-    "Body Care": {
-        "Dove": ["Soap", "Body Wash", "Deodorant"],
-        "Nivea": ["Body Lotion", "Body Wash"]
-    },
-    "Face Care": {
-        "Neutrogena": ["Face Wash", "Moisturizer", "Sunscreen"],
-        "CeraVe": ["Moisturizer", "Cleanser"]
-    },
-    "Cleaning": {
-        "Clorox": ["Wipes", "Spray"],
-        "Lysol": ["Wipes", "Spray"]
-    }
-}
 
 # ---------------- LOGIN / CREATE ACCOUNT ----------------
 if not st.session_state.logged_in:
@@ -120,58 +101,39 @@ if st.sidebar.button("Log out"):
 st.title("🛒 Supplyify")
 st.subheader("Search and track your supplies, reorder on Amazon.")
 
-# ---------------- FETCH USER DATA FOR DYNAMIC DROPDOWNS ----------------
-c.execute("SELECT category, brand, type FROM supplies WHERE email=?", (email,))
-user_data = c.fetchall()
+# ---------------- FREE-TEXT SEARCH ----------------
+query = st.text_input(
+    "Search for a product (type anything, e.g., 'laundry detergent')",
+    placeholder="Start typing..."
+)
 
-# Build dynamic category list
-categories = set(PREDEFINED.keys()) | set([row[0] for row in user_data])
-selected_category = st.selectbox("Category", ["Select"] + sorted(categories))
-
-# Build brand list dynamically
-brands = set()
-if selected_category != "Select":
-    if selected_category in PREDEFINED:
-        brands.update(PREDEFINED[selected_category].keys())
-    brands.update([row[1] for row in user_data if row[0]==selected_category])
-selected_brand = st.selectbox("Brand", ["Select"] + sorted(brands))
-
-# Build type list dynamically
-types = set()
-if selected_category != "Select" and selected_brand != "Select":
-    if selected_category in PREDEFINED and selected_brand in PREDEFINED[selected_category]:
-        types.update(PREDEFINED[selected_category][selected_brand])
-    types.update([row[2] for row in user_data if row[0]==selected_category and row[1]==selected_brand])
-selected_type = st.selectbox("Type", ["Select"] + sorted(types))
-
-# ---------------- AMAZON SEARCH / ADD ----------------
-if selected_category != "Select" and selected_brand != "Select" and selected_type != "Select":
-    product_name = f"{selected_brand} {selected_type}"
-    encoded_query = urllib.parse.quote_plus(product_name)
+if query:
+    encoded_query = urllib.parse.quote_plus(query)
     amazon_link = f"{AMAZON_SEARCH_URL}?k={encoded_query}&tag={AFFILIATE_TAG}"
 
     col1, col2 = st.columns([3,1])
     with col1:
-        st.markdown(f"**{product_name}**")
+        st.markdown(f"**{query}**")
     with col2:
-        if st.button("Add to My List", key=product_name):
-            c.execute("""INSERT INTO supplies
-                         (email, category, brand, type, name, amazon_link, amount_left, usage_per_day, added_on)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                      (email, selected_category, selected_brand, selected_type, product_name, amazon_link, 1, 1, datetime.now().isoformat()))
+        if st.button("Add to My List", key=query):
+            # Add to database with default 1 unit and usage
+            c.execute("""INSERT INTO supplies 
+                         (email, name, amazon_link, amount_left, usage_per_day, added_on) 
+                         VALUES (?, ?, ?, ?, ?, ?)""",
+                      (email, query, amazon_link, 1, 1, datetime.now().isoformat()))
             conn.commit()
-            st.success(f"Added {product_name} to your list!")
+            st.success(f"Added '{query}' to your list!")
 
     st.markdown(f"[View on Amazon]({amazon_link}){{:target='_blank'}}", unsafe_allow_html=True)
 
 # ---------------- SUPPLY LIST ----------------
 st.subheader("📋 My Supply List")
-c.execute("SELECT id, category, brand, type, name, amazon_link, amount_left, usage_per_day FROM supplies WHERE email=?", (email,))
+c.execute("SELECT id, name, amazon_link, amount_left, usage_per_day FROM supplies WHERE email=?", (email,))
 rows = c.fetchall()
 
 for row in rows:
-    id_, category, brand, type_, name, amazon_link, amount_left, usage_per_day = row
-    st.markdown(f"**{name}** ({category} / {brand} / {type_})")
+    id_, name, amazon_link, amount_left, usage_per_day = row
+    st.markdown(f"**{name}**")
     col1, col2, col3 = st.columns([2,1,1])
     with col1:
         new_amount = st.number_input("Units left", min_value=0, value=amount_left, key=f"amount_{id_}")
@@ -183,7 +145,7 @@ for row in rows:
             conn.commit()
             st.experimental_rerun()
 
-    # Update changes
+    # Update changes automatically
     if new_amount != amount_left or new_usage != usage_per_day:
         c.execute("UPDATE supplies SET amount_left=?, usage_per_day=? WHERE id=?", (new_amount, new_usage, id_))
         conn.commit()
