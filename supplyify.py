@@ -44,13 +44,14 @@ if not st.session_state.logged_in:
         st.subheader("Login")
         email = st.text_input("Email", key="login_email")
         password = st.text_input("Password", type="password", key="login_password")
-        if st.button("Login"):
-            if email in st.session_state.users and st.session_state.users[email] == password:
-                st.session_state.logged_in = True
-                st.session_state.email = email
-                st.success(f"Logged in as {email}")
-            else:
-                st.error("Invalid email or password")
+       if st.button("Login"):
+    if email in st.session_state.users and st.session_state.users[email] == password:
+        st.session_state.logged_in = True
+        st.session_state.email = email
+        st.experimental_rerun()  # <-- forces Streamlit to reload and show the main app
+    else:
+        st.error("Invalid email or password")
+
     
     # ---------------- CREATE ACCOUNT TAB ----------------
     with tab2:
