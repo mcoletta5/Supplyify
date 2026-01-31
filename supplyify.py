@@ -101,12 +101,26 @@ if st.sidebar.button("Log out"):
 st.title("🛒 Supplyify")
 st.subheader("Search and track your supplies, reorder on Amazon.")
 
-# ---------------- FREE-TEXT SEARCH ----------------
-query = st.text_input(
-    "Search for a product (type anything, e.g., 'laundry detergent')",
-    placeholder="Start typing..."
-)
+# ---------------- AUTOCOMPLETE SEARCH ----------------
+popular_products = [
+    "Dove Body Wash", "Nivea Body Lotion", "Clorox Wipes", "Lysol Spray",
+    "Neutrogena Face Wash", "CeraVe Moisturizer", "Dove Soap", "Deodorant",
+    "Laundry Detergent", "Makeup Remover", "Face Mask", "Sunscreen"
+]
 
+user_input = st.text_input("Search for a product...", placeholder="Start typing...")
+
+# Filter suggestions
+suggestions = [p for p in popular_products if user_input.lower() in p.lower()] if user_input else []
+
+# Select suggestion or keep own text
+if suggestions:
+    selected_product = st.selectbox("Suggestions", ["Use my own text"] + suggestions)
+    query = selected_product if selected_product != "Use my own text" else user_input
+else:
+    query = user_input
+
+# Add product
 if query:
     encoded_query = urllib.parse.quote_plus(query)
     amazon_link = f"{AMAZON_SEARCH_URL}?k={encoded_query}&tag={AFFILIATE_TAG}"
@@ -116,11 +130,10 @@ if query:
         st.markdown(f"**{query}**")
     with col2:
         if st.button("Add to My List", key=query):
-            # Add to database with default 1 unit and usage
             c.execute("""INSERT INTO supplies 
                          (email, name, amazon_link, amount_left, usage_per_day, added_on) 
                          VALUES (?, ?, ?, ?, ?, ?)""",
-                      (email, query, amazon_link, 1, 1, datetime.now().isoformat()))
+                      (email, query, amazon_link, 1.0, 1.0, datetime.now().isoformat()))
             conn.commit()
             st.success(f"Added '{query}' to your list!")
 
@@ -136,9 +149,21 @@ for row in rows:
     st.markdown(f"**{name}**")
     col1, col2, col3 = st.columns([2,1,1])
     with col1:
-        new_amount = st.number_input("Units left", min_value=0, value=amount_left, key=f"amount_{id_}")
+        new_amount = st.number_input(
+            "Units left", 
+            min_value=0.0, 
+            value=float(amount_left), 
+            step=1.0,
+            key=f"amount_{id_}"
+        )
     with col2:
-        new_usage = st.number_input("Units used per day", min_value=1, value=usage_per_day, key=f"usage_{id_}")
+        new_usage = st.number_input(
+            "Units used per day", 
+            min_value=0.1, 
+            value=float(usage_per_day), 
+            step=0.1,
+            key=f"usage_{id_}"
+        )
     with col3:
         if st.button("Remove", key=f"remove_{id_}"):
             c.execute("DELETE FROM supplies WHERE id=?", (id_,))
